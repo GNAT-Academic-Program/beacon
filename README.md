@@ -6,8 +6,8 @@ instantiations, so a subscriber to a `Telemetry_Topic` receives
 two explicit delivery modes, and a UDP multicast bridge for
 cross-process use on the desktop.
 
-GNAT Academic Program capstone project. Proposal title: *Beacon: Typed
-Publish-Subscribe Messaging*.
+GNAT Academic Program capstone project. Proposal title: _Beacon: Typed
+Publish-Subscribe Messaging_.
 
 ## What it is
 
@@ -21,7 +21,7 @@ worth doing in Ada:
   `void*`, no cast, no header field to trust.
 - **Delivery mode is a discriminant, not a flag.** `Subscriber (Reliable)`
   never drops and blocks the publisher when full. `Subscriber
-  (Best_Effort)` drops its oldest and counts it. `Dropped` is always 0 on
+(Best_Effort)` drops its oldest and counts it. `Dropped` is always 0 on
   a Reliable subscriber; that is the checkable form of the promise.
 - **Bounded everywhere.** Queue depth and subscriber count are generic
   parameters. No heap in `src/`. `Beacon.Queue` is SPARK.
@@ -62,9 +62,8 @@ Read `ARCHITECTURE.md` before touching anything.
    `Dropped (Reliable) = 0` at the end. Always.
 3. **Decide the open questions** (below), then change the code to match.
 4. **Make the bridge honest.** Measure loss on a real LAN, not loopback.
-   Report sequence gaps. Write the page that says what Reliable means
-   when the transport underneath is UDP, and compare to DDS RELIABLE
-   (retransmit) and BEST_EFFORT.
+   Report sequence gaps. Decide what our [delivery modes](/ARCHITECTURE.md#delivery-modes)
+   mean for Beacon's reliability.
 5. **A second transport.** Serial (UART) is the natural one: it is what
    a board-to-board link looks like, and it forces a framing decision
    (length prefix vs delimiter) that UDP datagrams hid.
@@ -78,7 +77,7 @@ Read `ARCHITECTURE.md` before touching anything.
    object. The in-process demo shows what happens when you get this
    wrong: it waits on a `Go` entry before publishing.
 3. `Receive` blocks with no timeout. Keep, or add `Receive (S, Msg,
-   Timeout, Success)`.
+Timeout, Success)`.
 4. Registry holds `Subscriber'Unchecked_Access`: a subscriber declared
    in a scope that exits leaves a dangling entry. Acceptable with the
    "declare at library level" rule, or redesign.
