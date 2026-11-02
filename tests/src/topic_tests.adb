@@ -6,6 +6,7 @@ with Ada.Command_Line;
 with Ada.Text_IO;  use Ada.Text_IO;
 with Beacon;       use Beacon;
 with Beacon.Topic;
+with Ada.Real_Time;   use Ada.Real_Time;
 
 procedure Topic_Tests is
 
@@ -80,6 +81,68 @@ begin
    end loop;
    T.Try_Receive (Rel, Msg, Got);
    Check (not Got, "reliable drained, Try_Receive says empty");
+
+   --  UC-18: Receive with timeout.
+   --  Rel was just drained above, so its queue is empty here.
+
+   --  Zero timeout on an empty queue behaves like Try_Receive.
+   T.Receive (Rel, Msg, 0.0, Got);
+   Check (not Got and then T.Pending (Rel) = 0,
+          "UC-18: zero timeout on empty queue returns Success = False");
+
+   --  Timeout expires on an empty queue: no message taken,
+   --  and it waited at least the requested time.
+   declare
+      Start   : constant Time := Clock;
+      Elapsed : Time_Span;
+   begin
+      T.Receive (Rel, Msg, 0.05, Got);
+      Elapsed := Clock - Start;
+      Check (not Got, "UC-18: timeout expires, Success = False");
+      Check (T.Pending (Rel) = 0, "UC-18: timeout leaves queue unchanged");
+      Check (Elapsed >= Milliseconds (50),
+             "UC-18: waited at least the requested timeout");
+      Check (Elapsed < Milliseconds (1_000),
+             "UC-18: returned promptly after the timeout");
+   end;
+
+   --  Message already waiting: rtuerned right away, removed from queue.
+   T.Try_Publish (Pub, (Id => 7, Value => 1.5), Delivered);
+   Check (Delivered, "UC-18 setup: message published");
+   declare
+      Start   : constant Time := Clock;
+      Elapsed : Time_Span;
+   begin
+      T.Receive (Rel, Msg, 0.5, Got);
+      Elapsed := Clock - Start;
+      Check (Got and then Msg.Id = 7,
+             "UC-18: waiting message returned with Success = True");
+      Check (T.Pending (Rel) = 0, "UC-18: message removed from queue");
+      Check (Elapsed < Milliseconds (500),
+             "UC-18: did not wait when a message was ready");
+   end;
+
+   --  Message arrives during the wait: returned before the timeout.
+   declare
+      task Late_Publisher;
+      task body Late_Publisher is
+         Ok : Boolean;
+      begin
+         delay 0.05;
+         T.Try_Publish (Pub, (Id => 8, Value => 2.5), Ok);
+      end Late_Publisher;
+
+      Start   : constant Time := Clock;
+      Elapsed : Time_Span;
+   begin
+      T.Receive (Rel, Msg, 1.0, Got);
+      Elapsed := Clock - Start;
+      Check (Got and then Msg.Id = 8,
+             "UC-18: message arriving during the wait is returned");
+      Check (Elapsed >= Milliseconds (40)
+               and then Elapsed < Milliseconds (1_000),
+             "UC-18: returned when the message arrived, before the timeout");
+   end;
 
    --  TODO (weeks 5-8): blocking Publish on a full Reliable queue, from a
    --  separate task, verified to unblock when the subscriber drains.

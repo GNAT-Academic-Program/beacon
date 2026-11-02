@@ -1,3 +1,4 @@
+with Ada.Real_Time;
 package body Beacon.Topic is
 
    -------------------
@@ -130,6 +131,29 @@ package body Beacon.Topic is
    begin
       S.Queue.Try_Pop (Msg, Success);
    end Try_Receive;
+
+   procedure Receive
+     (S       : in out Subscriber;
+      Msg     : out Message_Type;
+      Timeout : Duration;
+      Success : out Boolean)
+   is
+      use Ada.Real_Time;
+      Deadline : constant Time      := Clock + To_Time_Span (Timeout);
+      Poll     : constant Time_Span := Milliseconds (1);
+      Next     : Time;
+   begin
+      loop
+         Try_Receive (S, Msg, Success);
+         exit when Success or else Clock >= Deadline;
+
+         Next := Clock + Poll;
+         if Next > Deadline then
+            Next := Deadline;
+         end if;
+         delay until Next;
+      end loop;
+   end Receive;
 
    function Pending (S : Subscriber) return Natural is (S.Queue.Count);
    function Dropped (S : Subscriber) return Natural is (S.Queue.Drop_Count);

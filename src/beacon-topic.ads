@@ -81,6 +81,19 @@ package Beacon.Topic is
       Success : out Boolean)
      with Pre => Is_Registered (S);
 
+   --  Uses only Ada.Real_Time and delay until (Jorvik-compatible)
+   --  needs no tasking beyond protected types with entries (SNFR-26).
+   --  UC-18: Waits up to Timeout seconds for a message.
+   --  Success = True  : the oldest message was removed and returned in Msg.
+   --  Success = False : the timeout expired; the queue is unchanged and
+   --                    Msg is not meaningful.
+   procedure Receive
+     (S       : in out Subscriber;
+      Msg     : out Message_Type;
+      Timeout : Duration;
+      Success : out Boolean)
+     with Pre => Is_Registered (S) and then Timeout >= 0.0;
+
    --  Messages waiting in S's queue.
    function Pending (S : Subscriber) return Natural;
 
