@@ -106,7 +106,37 @@ begin
              "UC-18: returned promptly after the timeout");
    end;
 
-   --  Message already waiting: rtuerned right away, removed from queue.
+   --  SNFR-2 / UNFR-2: a timed Receive returns within Tolerance after
+   --  its requested timeout. Repeated to catch timer jitter; the worst
+   --  case is printed so the tolerance can be checked against real runs.
+   declare
+      Timeout   : constant Duration  := 0.02;
+      Tolerance : constant Time_Span := Milliseconds (30);
+      Runs      : constant Natural   := 20;
+      Count     : Natural   := 0;
+      Worst     : Time_Span := Time_Span_Zero;
+      Start     : Time;
+      Late      : Time_Span;
+   begin
+      while Count < Runs loop
+         Start := Clock;
+         T.Receive (Rel, Msg, Timeout, Got);
+         Late := (Clock - Start) - To_Time_Span (Timeout);
+         if Late > Worst then
+            Worst := Late;
+         end if;
+         Count := Count + 1;
+      end loop;
+      Put_Line ("  info  UC-18: worst return after timeout ="
+                & Duration'Image (To_Duration (Worst) * 1000)
+                & " ms over" & Natural'Image (Runs) & " runs");
+      Check (not Got and then T.Pending (Rel) = 0,
+             "UC-18: repeated timeouts leave queue unchanged");
+      Check (Worst < Tolerance,
+             "UC-18: returns within SNFR-2 tolerance (30 ms) after timeout");
+   end;
+
+   --  Message already waiting: returned right away, removed from queue.
    T.Try_Publish (Pub, (Id => 7, Value => 1.5), Delivered);
    Check (Delivered, "UC-18 setup: message published");
    declare
