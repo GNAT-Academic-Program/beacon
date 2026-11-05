@@ -50,14 +50,16 @@ repository root. Each step must pass before you report that a change is done.
    ./bin/inproc_demo
    ```
 
-5. Run SPARK flow analysis:
+5. Run SPARK flow analysis and the proof from the `prove/` crate:
 
    ```sh
-   alr -n exec -- gnatprove -P beacon.gpr --mode=flow --checks-as-errors=on
+   cd prove
+   alr -n exec -- gnatprove -P ../beacon.gpr --mode=flow --checks-as-errors=on
+   alr -n exec -- gnatprove -P beacon_prove.gpr --mode=all --checks-as-errors=on
    ```
 
-   CI first runs `alr -n with gnatprove`. That command changes
-   `alire.toml`. Do not commit that change.
+   Flow analysis must pass. Until Milestone 1 is done, the proof can
+   report unproved checks.
 
 ## Rules
 

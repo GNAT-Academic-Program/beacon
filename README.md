@@ -103,8 +103,8 @@ Read `ARCHITECTURE.md` before you change the code.
 
 ## Build
 
-The project has three [Alire](https://alire.ada.dev) crates. The demo
-and test crates pin the library by path.
+The project has four [Alire](https://alire.ada.dev) crates. The demo,
+test and proof crates pin the library by path.
 
 ```
 alr build                           # library, with src/net
@@ -114,7 +114,8 @@ cd demo  && alr build && ./bin/inproc_demo
 # two terminals:
 ./bin/net_subscriber 239.255.0.1 5000 5
 ./bin/net_publisher  239.255.0.1 5000 1000
-alr with gnatprove && alr exec -- gnatprove -P beacon.gpr --mode=flow
+cd prove && alr exec -- gnatprove -P ../beacon.gpr --mode=flow   # SPARK flow analysis
+cd prove && alr exec -- gnatprove -P beacon_prove.gpr            # SPARK proof of Beacon.Queue
 ```
 
 Each build checks contracts at runtime (`-gnata`). Each build treats

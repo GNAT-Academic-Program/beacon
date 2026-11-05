@@ -24,9 +24,11 @@ Your fork has the same CI workflow. The workflow does these steps:
 2. Runs the tests.
 3. Runs the demos.
 4. Runs SPARK flow analysis.
+5. Runs the SPARK proof of Beacon.Queue.
 
-All steps must pass. When you add behavior, add a test or a proof for it
-in the same commit.
+All steps must pass. Until Milestone 1 is done, step 5 can report
+unproved checks, and CI does not fail. When you add behavior, add a test
+or a proof for it in the same commit.
 
 Do not weaken a contract or an invariant to make a check pass. If a
 contract is wrong, fix the contract in a separate commit. Put the reason

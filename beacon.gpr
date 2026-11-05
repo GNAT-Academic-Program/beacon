@@ -29,7 +29,7 @@ library project Beacon is
       for Switches ("Ada") use ("-Es");
    end Binder;
 
-   --  gnatprove -P beacon.gpr --mode=all
+   --  cd prove && alr exec -- gnatprove -P beacon_prove.gpr
    --  Only Beacon and Beacon.Queue carry SPARK_Mode => On.
    package Prove is
       for Proof_Switches ("Ada") use ("--level=2", "--timeout=30", "-j0");
