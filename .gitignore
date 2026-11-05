@@ -7,3 +7,5 @@ config/
 *.ali
 gnatprove/
 demo/sub.log
+!/.agents/skills/alire/
+!/.agents/skills/gnatprove/
