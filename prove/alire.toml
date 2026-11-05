@@ -1,0 +1,16 @@
+name = "beacon_prove"
+description = "SPARK proof of beacon"
+version = "0.1.0-dev"
+authors = ["Gabriel Garcia"]
+maintainers = ["Olivier Henley <henley@adacore.com>"]
+maintainers-logins = ["ohenley"]
+licenses = "Apache-2.0"
+
+project-files = ["beacon_prove.gpr"]
+
+[[depends-on]]
+beacon = "*"
+gnatprove = "=16.1.0"
+
+[[pins]]
+beacon = { path = ".." }
