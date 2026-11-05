@@ -10,6 +10,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: alire-project/setup-alire@v4
+        with:
+          version: 2.1.1
+          toolchain: gnat_native=16.1.0 gprbuild=26.0.1
       - name: Build library (with network)
         run: alr -n build
       - name: Build library (BEACON_NETWORK=no, the embedded profile)
@@ -36,6 +39,16 @@ jobs:
           cat sub.log
           grep -q "done, 200 readings" sub.log
       - name: SPARK flow analysis
-        run: |
-          alr -n with gnatprove
-          alr -n exec -- gnatprove -P beacon.gpr --mode=flow --checks-as-errors=on
+        working-directory: prove
+        run: alr -n exec -- gnatprove -P ../beacon.gpr --mode=flow --checks-as-errors=on
+      - name: SPARK proof of Beacon.Queue
+        working-directory: prove
+        # Remove when Milestone 1 is done.
+        continue-on-error: true
+        run: alr -n exec -- gnatprove -P beacon_prove.gpr --mode=all --checks-as-errors=on
+      - name: Keep the proof output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnatprove-out
+          path: prove/obj/gnatprove/gnatprove.out
