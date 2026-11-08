@@ -44,15 +44,31 @@ package Beacon.Topic is
    procedure Publish (P : Publisher; Msg : Message_Type)
      with Pre => Is_Created (P);
 
-   --  Never blocks. Delivered is False if at least one Reliable
-   --  subscriber was full; that subscriber did not get Msg, the others did.
-   --  (Week 4 decision: keep this partial semantics, or make it all-or-
-   --  nothing. Partial is simpler and matches DDS per-reader queues.)
+   --  Never waits for queue capacity.
+   --  Reliable subscriber with a full queue: rejects Msg.
+   --  Best_Effort subscriber: accepts Msg, dropping oldest if full.
+   --  Partial delivery is intentional: other subscribers still receive Msg.
+   --  Delivered is false if any Reliable subscriber rejected Msg, true otherwise.
    procedure Try_Publish
      (P         : Publisher;
       Msg       : Message_Type;
       Delivered : out Boolean)
      with Pre => Is_Created (P);
+
+   --  Failure flags indexed by subscriber registration order
+   --  The array size is fixed by Max_Subscribers at instantiation
+   --  True means that the subscriber rejected Msg because the queue was full
+   --  Unused registration slots remain false
+   type Delivery_Failures is
+      array (1 .. Max_Subscribers) of Boolean;
+
+   --  Same delivery behavior as Try_Publish, with per-subscrier results.
+   procedure Try_Publish
+       (P            : Publisher;
+         Msg         : Message_Type;
+         Delivered   : out Boolean;
+         Failures    : out Delivery_Failures)
+       with Pre => Is_Created (P);
 
    ----------------
    -- Subscriber --
