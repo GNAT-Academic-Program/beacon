@@ -15,6 +15,7 @@ with Ada.Command_Line;
 with Ada.Real_Time;   use Ada.Real_Time;
 with Ada.Text_IO;     use Ada.Text_IO;
 with Beacon;          use Beacon;
+with Beacon.Topic;
 with Telemetry;       use Telemetry;
 
 procedure Inproc_Demo is
@@ -71,6 +72,65 @@ procedure Inproc_Demo is
          delay until Next;
       end loop;
    end Controller;
+
+   procedure Run_UC17_Demo (OK : in out Boolean);
+
+   --  UC-17 uses a separate typed topic so the original demonstration
+   --  and its publisher/subscriber state remain unchanged.
+   procedure Run_UC17_Demo (OK : in out Boolean) is
+      package Diagnostic_Topic is new Beacon.Topic
+        (Message_Type    => Natural,
+         Queue_Depth     => 1,
+         Max_Subscribers => 3);
+
+      Pub       : Diagnostic_Topic.Publisher;
+      First     : aliased Diagnostic_Topic.Subscriber (Reliable);
+      Middle    : aliased Diagnostic_Topic.Subscriber (Reliable);
+      Last      : aliased Diagnostic_Topic.Subscriber (Reliable);
+      Rejected  : Diagnostic_Topic.Delivery_Failures;
+      Delivered : Boolean;
+      Message   : Natural;
+      Passed    : Boolean := True;
+   begin
+      Put_Line ("UC-17: nonblocking partial delivery (3 Reliable subscribers)");
+      Diagnostic_Topic.Create_Publisher (Pub);
+      Diagnostic_Topic.Create_Subscriber (First);
+      Diagnostic_Topic.Create_Subscriber (Middle);
+      Diagnostic_Topic.Create_Subscriber (Last);
+
+      --  Fill all queues, then leave only the middle subscriber full.
+      Diagnostic_Topic.Try_Publish (Pub, 100, Delivered, Rejected);
+      Passed := Passed and Delivered;
+      Diagnostic_Topic.Receive (First, Message);
+      Passed := Passed and Message = 100;
+      Diagnostic_Topic.Receive (Last, Message);
+      Passed := Passed and Message = 100;
+
+      Diagnostic_Topic.Try_Publish (Pub, 101, Delivered, Rejected);
+      Put_Line ("  Delivered = " & Boolean'Image (Delivered));
+      for I in Rejected'Range loop
+         Put_Line ("  Subscriber" & I'Image & " rejected = "
+                   & Boolean'Image (Rejected (I)));
+      end loop;
+
+      Passed := Passed and not Delivered;
+      Passed := Passed and not Rejected (1) and Rejected (2)
+        and not Rejected (3);
+      Diagnostic_Topic.Receive (First, Message);
+      Passed := Passed and Message = 101;
+      Diagnostic_Topic.Receive (Middle, Message);
+      Passed := Passed and Message = 100;
+      Diagnostic_Topic.Receive (Last, Message);
+      Passed := Passed and Message = 101;
+      Passed := Passed and Diagnostic_Topic.Dropped (Middle) = 0;
+
+      if Passed then
+         Put_Line ("  UC-17 partial delivery ok");
+      else
+         Put_Line ("  FAIL: UC-17 partial delivery");
+         OK := False;
+      end if;
+   end Run_UC17_Demo;
 
    Readings_Seen  : Natural := 0;
    Commands_Seen  : Natural := 0;
@@ -138,6 +198,9 @@ begin
       Put_Line ("FAIL: best-effort did not keep the newest reading");
       OK := False;
    end if;
+
+   New_Line;
+   Run_UC17_Demo (OK);
 
    if OK then
       Put_Line ("inproc_demo ok");

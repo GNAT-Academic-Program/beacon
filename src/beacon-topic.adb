@@ -104,6 +104,26 @@ package body Beacon.Topic is
       end loop;
    end Try_Publish;
 
+   procedure Try_Publish
+     (P         : Publisher;
+      Msg       : Message_Type;
+      Delivered : out Boolean;
+      Failures  : out Delivery_Failures)
+   is
+      pragma Unreferenced (P);
+      Accepted : Boolean;
+   begin
+      Delivered := True;
+      Failures := [others => False];
+
+      for I in 1 .. Registered loop
+         Registry (I).Queue.Try_Push (Msg, Accepted);
+
+         Failures (I) := not Accepted;
+         Delivered := Delivered and Accepted;
+      end loop;
+   end Try_Publish;
+
    ----------------
    -- Subscriber --
    ----------------
