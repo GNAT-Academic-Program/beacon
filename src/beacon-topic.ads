@@ -29,7 +29,7 @@ generic
 package Beacon.Topic is
 
    type Publisher is limited private;
-   type Subscriber (Current_Mode : Delivery_Mode) is limited private;
+   type Subscriber (Mode : Delivery_Mode) is limited private;
    subtype Slot_Index is Natural range 0 .. Max_Subscribers;
    subtype Active_Slot_Index is Slot_Index range 1 .. Max_Subscribers;
 
@@ -84,8 +84,9 @@ package Beacon.Topic is
 
    function Is_Registered (S : Subscriber) return Boolean;
 
-   --  S must outlive every Publish: declare it at library level or in
-   --  the scope that owns the whole run. No heap, so no copy is taken.
+   --  Registers S with the topic. The topic owns the queue and S holds only
+   --  a slot number, so S may go out of scope. Slots are never released.
+   --  Registration must finish before publishing starts (README decision 2).
    procedure Create_Subscriber (S : in out Subscriber)
      with Pre  => Subscriber_Count < Max_Subscribers
                   and then not Is_Registered (S),
@@ -129,7 +130,7 @@ private
       Depth => Queue_Depth);
 
    protected type Bounded_Queue is
-      procedure Configure (Current_Mode : Delivery_Mode);
+      procedure Configure (Mode : Delivery_Mode);
       --  Barrier: Reliable open when not full.
       entry Push (Msg : Message_Type);
       entry Pop (Msg : out Message_Type);
@@ -152,7 +153,7 @@ private
 
    --  Subscribers no longer has their own private queue. All queues are in Topic's
    --  array. Subscribers are given an Slot_Index
-   type Subscriber (Current_Mode : Delivery_Mode) is limited record
+   type Subscriber (Mode : Delivery_Mode) is limited record
       Slot : Slot_Index := 0;
    end record;
 

@@ -7,9 +7,9 @@ package body Beacon.Topic is
 
    protected body Bounded_Queue is
 
-      procedure Configure (Current_Mode : Delivery_Mode) is
+      procedure Configure (Mode : Delivery_Mode) is
       begin
-         Bounded_Queue.Current_Mode := Current_Mode;
+         Current_Mode := Mode;
          Can_Push := True;
          Has_Data := False;
       end Configure;
@@ -139,7 +139,7 @@ package body Beacon.Topic is
    procedure Create_Subscriber (S : in out Subscriber) is
       New_Index : constant Active_Slot_Index := Registered + 1; --  increment by 1
    begin
-      Slots (New_Index).Configure (S.Current_Mode);
+      Slots (New_Index).Configure (S.Mode);
       S.Slot := New_Index;
       Registered := New_Index;
    end Create_Subscriber;
@@ -180,7 +180,8 @@ package body Beacon.Topic is
       end loop;
    end Receive;
 
-   function Pending (S : Subscriber) return Natural is (Slots (S.Slot).Count);
+   function Pending (S : Subscriber) return Natural is
+      (if S.Slot = 0 then 0 else Slots (S.Slot).Count);
    function Dropped (S : Subscriber) return Natural is
       (if S.Slot = 0 then 0 else Slots (S.Slot).Drop_Count);
 
