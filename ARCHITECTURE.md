@@ -89,17 +89,20 @@ not that every published message arrived.
 
 ## The registry
 
-The registry is a fixed array of `Max_Subscribers` access values.
-`Create_Subscriber` adds `S'Unchecked_Access` to it. The registry is not
-protected. Rules:
+The registry is a protected fixed array of `Max_Subscribers` access values.
+Registration checks capacity and duplicates in the same protected operation as insertion.
+Tasks may register different subscribers concurrently during startup.
+Callers must finish registration before starting publication.
 
-- Register at startup, before the first `Publish`.
-- Register from one task only.
+The first Publish or Try_Publish closes registration and copies the subscriber list.
+Queue operations run after the registry lock is released because Reliable delivery can block.
+Late registration raises `Ada.Assertions.Assertion_Error` without changing membership.
+Concurrent registrations use protected-operation order as registration order.
 
-The in-process demo shows the failure when a program breaks these rules:
-tasks activate before `main` registers. The demo prevents the failure
-with a `Go` entry. A Week 4 decision is to keep this rule or to make
-registration protected.
+Subscribers must remain alive while topic operations can access them.
+The registry still stores caller-owned subscribers through `Unchecked_Access`.
+This change does not solve dangling subscriber access.
+Callers must serialize operations on the same Publisher.
 
 ## Wire
 

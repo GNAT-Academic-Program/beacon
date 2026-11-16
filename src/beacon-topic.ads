@@ -9,8 +9,11 @@
 --  Static model (design rule 4): each instantiation has a fixed table of
 --  Max_Subscribers entries. Rules for the user:
 --    * Register each subscriber at startup, before the first Publish.
---    * Register from one task only. Registration is not task-safe.
---  After registration, Publish, Receive and the queries are task-safe.
+--    * Tasks may register different subscribers concurrently at startup.
+--    * Finish registration before Publish or Try_Publish begins.
+--  The first publication closes registration, even with no subscribers.
+--  Calls on the same Publisher must remain serialized by the caller.
+--  Subscribers must remain alive while any topic operation can access them.
 --
 --  Single writer: each instantiation has one Publisher. Create_Publisher
 --  refuses a second one.
@@ -79,15 +82,18 @@ package Beacon.Topic is
    --  True after Create_Subscriber has run on S.
    function Is_Registered (S : Subscriber) return Boolean;
 
-   --  Adds S to the registry. The registry keeps an access to S and does
+   --  Adds S once during startup. Raises Ada.Assertions.Assertion_Error
+   --  if registration is closed, capacity is exhausted, or S is registered.
+   --  Capacity and duplicate checks occur together with the insertion.
+   --  Other successful registrations can also increase Subscriber_Count.
+   --  The registry keeps an access to S and does
    --  not copy S. Thus S must exist until the last Publish. Declare S at
    --  library level, or in the scope that contains the full run. If S
    --  goes out of scope first, the registry holds a dangling access.
    procedure Create_Subscriber (S : aliased in out Subscriber)
      with Pre  => Subscriber_Count < Max_Subscribers
                   and then not Is_Registered (S),
-          Post => Subscriber_Count = Subscriber_Count'Old + 1
-                  and then Is_Registered (S);
+          Post => Is_Registered (S);
 
    --  Removes the oldest message from S and returns it in Msg. If S is
    --  empty, Receive blocks until a message arrives. Receive has no
@@ -131,11 +137,11 @@ private
 
    type Subscriber (Mode : Delivery_Mode) is limited record
       Queue      : Bounded_Queue (Mode);
-      Registered : Boolean := False;
+      Registered : Boolean := False with Atomic;
    end record;
 
    type Publisher is limited record
-      Created : Boolean := False;
+      Created : Boolean := False with Atomic;
    end record;
 
 end Beacon.Topic;

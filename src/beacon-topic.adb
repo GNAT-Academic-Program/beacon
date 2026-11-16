@@ -1,3 +1,5 @@
+with Ada.Assertions;
+
 package body Beacon.Topic is
 
    -------------------
@@ -60,33 +62,75 @@ package body Beacon.Topic is
    -- Registry --
    --------------
 
-   --  Fixed table. Create_Subscriber fills it at startup. The table is not
-   --  protected on purpose. See the package spec.
    type Subscriber_Access is access all Subscriber;
    type Registry_Array is array (1 .. Max_Subscribers) of Subscriber_Access;
 
-   Registry        : Registry_Array := [others => null];
-   Registered      : Natural := 0;
-   Publisher_Taken : Boolean := False;
+   protected Registry is
+      procedure Add (S : not null Subscriber_Access);
+      procedure Claim_Publisher (P : in out Publisher);
+      procedure Freeze (Snapshot : out Registry_Array; Size : out Natural);
+      function Count return Natural;
+      function Has_Publisher return Boolean;
+   private
+      Members         : Registry_Array := [others => null];
+      Registered      : Natural range 0 .. Max_Subscribers := 0;
+      Publisher_Taken : Boolean := False;
+      Closed          : Boolean := False;
+   end Registry;
+
+   protected body Registry is
+      procedure Add (S : not null Subscriber_Access) is
+      begin
+         --  Preconditions alone cannot make a check and insertion atomic.
+         if Closed or else Registered = Max_Subscribers or else S.Registered then
+            raise Ada.Assertions.Assertion_Error with "subscriber registration rejected";
+         end if;
+         Registered := Registered + 1;
+         Members (Registered) := S;
+         S.Registered := True;
+      end Add;
+
+      procedure Claim_Publisher (P : in out Publisher) is
+      begin
+         if Publisher_Taken or else P.Created then
+            raise Ada.Assertions.Assertion_Error with "publisher already created";
+         end if;
+         Publisher_Taken := True;
+         P.Created := True;
+      end Claim_Publisher;
+
+      procedure Freeze (Snapshot : out Registry_Array; Size : out Natural) is
+      begin
+         Closed := True;
+         Snapshot := Members;
+         Size := Registered;
+      end Freeze;
+
+      function Count return Natural is (Registered);
+      function Has_Publisher return Boolean is (Publisher_Taken);
+   end Registry;
 
    ---------------
    -- Publisher --
    ---------------
 
-   function Has_Publisher return Boolean is (Publisher_Taken);
+   function Has_Publisher return Boolean is (Registry.Has_Publisher);
    function Is_Created (P : Publisher) return Boolean is (P.Created);
 
    procedure Create_Publisher (P : in out Publisher) is
    begin
-      Publisher_Taken := True;
-      P.Created := True;
+      Registry.Claim_Publisher (P);
    end Create_Publisher;
 
    procedure Publish (P : Publisher; Msg : Message_Type) is
       pragma Unreferenced (P);  --  P is used only by the precondition
+      Members : Registry_Array;
+      Count   : Natural;
    begin
-      for I in 1 .. Registered loop
-         Registry (I).Queue.Push (Msg);
+      --  Queue entries can block, so call them after releasing the registry.
+      Registry.Freeze (Members, Count);
+      for I in 1 .. Count loop
+         Members (I).Queue.Push (Msg);
       end loop;
    end Publish;
 
@@ -97,10 +141,13 @@ package body Beacon.Topic is
    is
       pragma Unreferenced (P);
       Accepted : Boolean;
+      Members  : Registry_Array;
+      Count    : Natural;
    begin
+      Registry.Freeze (Members, Count);
       Delivered := True;
-      for I in 1 .. Registered loop
-         Registry (I).Queue.Try_Push (Msg, Accepted);
+      for I in 1 .. Count loop
+         Members (I).Queue.Try_Push (Msg, Accepted);
          Delivered := Delivered and Accepted;
       end loop;
    end Try_Publish;
@@ -109,14 +156,12 @@ package body Beacon.Topic is
    -- Subscriber --
    ----------------
 
-   function Subscriber_Count return Natural is (Registered);
+   function Subscriber_Count return Natural is (Registry.Count);
    function Is_Registered (S : Subscriber) return Boolean is (S.Registered);
 
    procedure Create_Subscriber (S : aliased in out Subscriber) is
    begin
-      Registered := Registered + 1;
-      Registry (Registered) := S'Unchecked_Access;
-      S.Registered := True;
+      Registry.Add (S'Unchecked_Access);
    end Create_Subscriber;
 
    procedure Receive (S : in out Subscriber; Msg : out Message_Type) is
