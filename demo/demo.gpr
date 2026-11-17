@@ -10,6 +10,9 @@ project Demo is
       "inproc_demo.adb",
       "net_publisher.adb",
       "net_subscriber.adb",
+      "net_subscriber.adb",
+      "uart_publisher.adb",
+      "uart_subscriber.adb",
 
       -- Files for environmental system demonstration.
       "beacon_server.adb",
