@@ -5,7 +5,18 @@ project Demo is
    for Object_Dir use "obj";
    for Exec_Dir use "bin";
    for Create_Missing_Dirs use "True";
-   for Main use ("inproc_demo.adb", "net_publisher.adb", "net_subscriber.adb");
+   for Main use (
+      -- Included demos from original project
+      "inproc_demo.adb",
+      "net_publisher.adb",
+      "net_subscriber.adb",
+
+      -- Files for environmental system demonstration.
+      "beacon_server.adb",
+      "temperature_sensor.adb",
+      "humidity_sensor.adb",
+      "lcd_display.adb",
+      "emergency_alert.adb");
    package Compiler is
       for Default_Switches ("Ada") use
         ("-gnat2022", "-gnata", "-gnatwa", "-gnatwe", "-gnatVa", "-gnatyg", "-gnatyM100", "-g", "-O1");
