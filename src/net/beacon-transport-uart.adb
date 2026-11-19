@@ -3,6 +3,40 @@ with Ada.Real_Time;
 
 package body Beacon.Transport.UART is
 
+   function Normalize_Port (Name : Serial.Port_Name)
+                            return Serial.Port_Name;
+
+   ---------------------
+   -- Normalize_Port --
+   ---------------------
+
+   function Normalize_Port (Name : Serial.Port_Name)
+                            return Serial.Port_Name
+   is
+      S : constant String := String (Name);
+   begin
+      --  Convert ordinary Windows COM port names to GNAT device paths.
+      --  Leave explicit paths and non-COM device names unchanged.
+      if S'Length > 3 and then S (S'First .. S'First + 2) = "COM" then
+         for I in S'First + 3 .. S'Last loop
+            if S (I) not in '0' .. '9' then
+               return Name;
+            end if;
+         end loop;
+
+         declare
+            Number : constant Natural :=
+              Natural'Value (S (S'First + 3 .. S'Last));
+         begin
+            if Number > 0 then
+               return Serial.Name (Number);
+            end if;
+         end;
+      end if;
+
+      return Name;
+   end Normalize_Port;
+
    ----------
    -- Open --
    ----------
@@ -20,7 +54,7 @@ package body Beacon.Transport.UART is
          raise Serial.Serial_Error with "UART transport already open";
       end if;
 
-      Serial.Open (T.Port, Name);
+      Serial.Open (T.Port, Normalize_Port (Name));
 
       begin
          Serial.Set
