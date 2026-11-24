@@ -74,6 +74,7 @@ procedure Inproc_Demo is
    end Controller;
 
    procedure Run_UC17_Demo (OK : in out Boolean);
+   procedure Run_UC18_Demo (OK : in out Boolean);
 
    --  UC-17 uses a separate typed topic so the original demonstration
    --  and its publisher/subscriber state remain unchanged.
@@ -131,6 +132,83 @@ procedure Inproc_Demo is
          OK := False;
       end if;
    end Run_UC17_Demo;
+
+   --  UC-18 exercises the timed Receive overload on its own topic.
+   --  No existing topic or publisher/subscriber state is changed.
+   procedure Run_UC18_Demo (OK : in out Boolean) is
+      package Timed_Topic is new Beacon.Topic
+        (Message_Type    => Natural,
+         Queue_Depth     => 2,
+         Max_Subscribers => 1);
+
+      Pub       : Timed_Topic.Publisher;
+      Sub       : aliased Timed_Topic.Subscriber (Reliable);
+      Message   : Natural;
+      Got       : Boolean;
+      Passed    : Boolean := True;
+      Started   : Time;
+      Elapsed   : Duration;
+
+      task Delayed_Publisher is
+         entry Go;
+      end Delayed_Publisher;
+
+      task body Delayed_Publisher is
+      begin
+         accept Go;
+         delay 0.05;
+         Timed_Topic.Publish (Pub, 300);
+      end Delayed_Publisher;
+   begin
+      Put_Line ("UC-18: Receive with timeout");
+      Timed_Topic.Create_Publisher (Pub);
+      Timed_Topic.Create_Subscriber (Sub);
+
+      --  An empty queue should time out without removing a message.
+      Started := Clock;
+      Timed_Topic.Receive (Sub, Message, 0.05, Got);
+      Elapsed := To_Duration (Clock - Started);
+      Put_Line ("  Empty queue: Success = " & Boolean'Image (Got)
+                & ", elapsed = " & Duration'Image (Elapsed) & " s");
+      Passed := Passed and not Got;
+      Passed := Passed and Timed_Topic.Pending (Sub) = 0;
+      Passed := Passed and Elapsed >= 0.05;
+
+      --  A queued message should be returned without waiting.
+      Timed_Topic.Publish (Pub, 200);
+      Started := Clock;
+      Timed_Topic.Receive (Sub, Message, 0.5, Got);
+      Elapsed := To_Duration (Clock - Started);
+      Put_Line ("  Queued message: Success = " & Boolean'Image (Got)
+                & ", elapsed = " & Duration'Image (Elapsed) & " s");
+      Passed := Passed and Got;
+      if Got then
+         Passed := Passed and Message = 200;
+      end if;
+      Passed := Passed and Timed_Topic.Pending (Sub) = 0;
+      Passed := Passed and Elapsed < 0.5;
+
+      --  A separate task publishes during the timed wait.
+      Delayed_Publisher.Go;
+      Started := Clock;
+      Timed_Topic.Receive (Sub, Message, 0.5, Got);
+      Elapsed := To_Duration (Clock - Started);
+      Put_Line ("  Delayed message: Success = " & Boolean'Image (Got)
+                & ", elapsed = " & Duration'Image (Elapsed) & " s");
+      Passed := Passed and Got;
+      if Got then
+         Passed := Passed and Message = 300;
+      end if;
+      Passed := Passed and Elapsed < 0.5;
+      Passed := Passed and Timed_Topic.Pending (Sub) = 0;
+
+      if Passed then
+         Put_Line ("  UC-18 timed receive ok");
+      else
+         Put_Line ("  FAIL: UC-18 timed receive");
+         OK := False;
+      end if;
+   end Run_UC18_Demo;
 
    Readings_Seen  : Natural := 0;
    Commands_Seen  : Natural := 0;
@@ -201,6 +279,8 @@ begin
 
    New_Line;
    Run_UC17_Demo (OK);
+   New_Line;
+   Run_UC18_Demo (OK);
 
    if OK then
       Put_Line ("inproc_demo ok");
