@@ -9,7 +9,8 @@ project Tests is
      ("queue_tests.adb",
       "topic_tests.adb",
       "wire_tests.adb",
-      "unchecked_access_tests.adb");
+      "unchecked_access_tests.adb",
+      "uart_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use
         ("-gnat2022", "-gnata", "-gnatwa", "-gnatwe", "-gnatVa", "-gnatyg", "-gnatyM100", "-g", "-O1");
