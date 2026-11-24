@@ -79,9 +79,9 @@ Read `ARCHITECTURE.md` before touching anything.
    wrong: it waits on a `Go` entry before publishing.
 3. `Receive` blocks with no timeout. Keep, or add `Receive (S, Msg,
    Timeout, Success)`.
-4. Registry holds `Subscriber'Unchecked_Access`: a subscriber declared
-   in a scope that exits leaves a dangling entry. Acceptable with the
-   "declare at library level" rule, or redesign.
+4. Resolved: the topic owns the subscriber queues and each subscriber
+   stores only a slot number, so leaving scope cannot leave a dangling
+   pointer in the registry. Slots are never released.
 
 ## Build
 
@@ -91,13 +91,15 @@ library by path.
 ```
 alr build                           # library, with src/net
 BEACON_NETWORK=no alr build         # library, in-process only
-cd tests && alr build && ./bin/queue_tests && ./bin/topic_tests && ./bin/wire_tests
+cd tests && alr build && ./bin/queue_tests && ./bin/topic_tests && ./bin/wire_tests && ./bin/unchecked_access_tests
 cd demo  && alr build && ./bin/inproc_demo
 # two terminals:
 ./bin/net_subscriber 239.255.0.1 5000 5
 ./bin/net_publisher  239.255.0.1 5000 1000
 alr with gnatprove && alr exec -- gnatprove -P beacon.gpr --mode=flow
 ```
+
+On Windows, run `cd tests; alr build; .\bin\unchecked_access_tests.exe`.
 
 Contracts are checked at runtime in every build (`-gnata`). Warnings
 are errors.

@@ -1,6 +1,6 @@
 name = "beacon_tests"
 description = "beacon unit tests"
-executables = ["queue_tests", "topic_tests", "wire_tests"]
+executables = ["queue_tests", "topic_tests", "wire_tests", "unchecked_access_tests"]
 version = "0.1.0-dev"
 authors = ["Olivier Henley"]
 maintainers = ["Olivier Henley <henley@adacore.com>"]
