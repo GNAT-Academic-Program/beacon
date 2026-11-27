@@ -1,0 +1,14 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build and run Beacon tests",
+			"type": "shell",
+			"command": "cd /d \"C:\\Users\\Admin\\Ada Beacon\\beacon\\tests\" && alr build && bin\\queue_tests.exe && bin\\topic_tests.exe && bin\\wire_tests.exe && bin\\unchecked_access_tests.exe",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		}
+	]
+}

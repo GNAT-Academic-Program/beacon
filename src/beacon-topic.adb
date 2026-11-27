@@ -1,3 +1,4 @@
+with Ada.Real_Time;
 package body Beacon.Topic is
 
    -------------------
@@ -6,12 +7,17 @@ package body Beacon.Topic is
 
    protected body Bounded_Queue is
 
-      entry Push (Msg : Message_Type)
-        when Mode = Best_Effort or else not Ring.Is_Full (Q)
-      is
+      procedure Configure (Mode : Delivery_Mode) is
+      begin
+         Current_Mode := Mode;
+         Can_Push := True;
+         Has_Data := False;
+      end Configure;
+
+      entry Push (Msg : Message_Type) when Can_Push is
          Dropped : Boolean;
       begin
-         if Mode = Best_Effort then
+         if Current_Mode = Best_Effort then
             Ring.Push_Dropping_Oldest (Q, Msg, Dropped);
             if Dropped then
                Drops := Drops + 1;
@@ -19,12 +25,15 @@ package body Beacon.Topic is
          else
             Ring.Push (Q, Msg);
          end if;
+
+         Can_Push := Current_Mode = Best_Effort or else not Ring.Is_Full (Q);
+         Has_Data := not Ring.Is_Empty (Q);
       end Push;
 
       procedure Try_Push (Msg : Message_Type; Accepted : out Boolean) is
          Dropped : Boolean;
       begin
-         if Mode = Best_Effort then
+         if Current_Mode = Best_Effort then
             Ring.Push_Dropping_Oldest (Q, Msg, Dropped);
             if Dropped then
                Drops := Drops + 1;
@@ -36,11 +45,16 @@ package body Beacon.Topic is
             Ring.Push (Q, Msg);
             Accepted := True;
          end if;
+
+         Can_Push := Current_Mode = Best_Effort or else not Ring.Is_Full (Q);
+         Has_Data := not Ring.Is_Empty (Q);
       end Try_Push;
 
-      entry Pop (Msg : out Message_Type) when not Ring.Is_Empty (Q) is
+      entry Pop (Msg : out Message_Type) when Has_Data is
       begin
          Ring.Pop (Q, Msg);
+         Can_Push := Current_Mode = Best_Effort or else not Ring.Is_Full (Q);
+         Has_Data := not Ring.Is_Empty (Q);
       end Pop;
 
       procedure Try_Pop (Msg : out Message_Type; Success : out Boolean) is
@@ -49,6 +63,8 @@ package body Beacon.Topic is
          if Success then
             Ring.Pop (Q, Msg);
          end if;
+         Can_Push := Current_Mode = Best_Effort or else not Ring.Is_Full (Q);
+         Has_Data := not Ring.Is_Empty (Q);
       end Try_Pop;
 
       function Count return Natural is (Ring.Count (Q));
@@ -56,16 +72,6 @@ package body Beacon.Topic is
 
    end Bounded_Queue;
 
-   --------------
-   -- Registry --
-   --------------
-
-   --  Static table, filled at startup. Not protected on purpose: see spec.
-   type Subscriber_Access is access all Subscriber;
-   type Registry_Array is array (1 .. Max_Subscribers) of Subscriber_Access;
-
-   Registry        : Registry_Array := [others => null];
-   Registered      : Natural := 0;
    Publisher_Taken : Boolean := False;
 
    ---------------
@@ -85,7 +91,7 @@ package body Beacon.Topic is
       pragma Unreferenced (P);  --  the precondition is the whole use
    begin
       for I in 1 .. Registered loop
-         Registry (I).Queue.Push (Msg);
+         Slots (I).Push (Msg);
       end loop;
    end Publish;
 
@@ -99,7 +105,26 @@ package body Beacon.Topic is
    begin
       Delivered := True;
       for I in 1 .. Registered loop
-         Registry (I).Queue.Try_Push (Msg, Accepted);
+         Slots (I).Try_Push (Msg, Accepted);
+         Delivered := Delivered and Accepted;
+      end loop;
+   end Try_Publish;
+
+   procedure Try_Publish
+     (P         : Publisher;
+      Msg       : Message_Type;
+      Delivered : out Boolean;
+      Failures  : out Delivery_Failures)
+   is
+      pragma Unreferenced (P);
+      Accepted : Boolean;
+   begin
+      Delivered := True;
+      Failures := [others => False];
+
+      for I in 1 .. Registered loop
+         Slots (I).Try_Push (Msg, Accepted);
+         Failures (I) := not Accepted;
          Delivered := Delivered and Accepted;
       end loop;
    end Try_Publish;
@@ -109,18 +134,19 @@ package body Beacon.Topic is
    ----------------
 
    function Subscriber_Count return Natural is (Registered);
-   function Is_Registered (S : Subscriber) return Boolean is (S.Registered);
+   function Is_Registered (S : Subscriber) return Boolean is (S.Slot /= 0);
 
-   procedure Create_Subscriber (S : aliased in out Subscriber) is
+   procedure Create_Subscriber (S : in out Subscriber) is
+      New_Index : constant Active_Slot_Index := Registered + 1; --  increment by 1
    begin
-      Registered := Registered + 1;
-      Registry (Registered) := S'Unchecked_Access;
-      S.Registered := True;
+      Slots (New_Index).Configure (S.Mode);
+      S.Slot := New_Index;
+      Registered := New_Index;
    end Create_Subscriber;
 
    procedure Receive (S : in out Subscriber; Msg : out Message_Type) is
    begin
-      S.Queue.Pop (Msg);
+      Slots (S.Slot).Pop (Msg);
    end Receive;
 
    procedure Try_Receive
@@ -128,10 +154,35 @@ package body Beacon.Topic is
       Msg     : out Message_Type;
       Success : out Boolean) is
    begin
-      S.Queue.Try_Pop (Msg, Success);
+      Slots (S.Slot).Try_Pop (Msg, Success);
    end Try_Receive;
 
-   function Pending (S : Subscriber) return Natural is (S.Queue.Count);
-   function Dropped (S : Subscriber) return Natural is (S.Queue.Drop_Count);
+   procedure Receive
+     (S       : in out Subscriber;
+      Msg     : out Message_Type;
+      Timeout : Duration;
+      Success : out Boolean)
+   is
+      use Ada.Real_Time;
+      Deadline : constant Time      := Clock + To_Time_Span (Timeout);
+      Poll     : constant Time_Span := Milliseconds (1);
+      Next     : Time;
+   begin
+      loop
+         Try_Receive (S, Msg, Success);
+         exit when Success or else Clock >= Deadline;
+
+         Next := Clock + Poll;
+         if Next > Deadline then
+            Next := Deadline;
+         end if;
+         delay until Next;
+      end loop;
+   end Receive;
+
+   function Pending (S : Subscriber) return Natural is
+      (if S.Slot = 0 then 0 else Slots (S.Slot).Count);
+   function Dropped (S : Subscriber) return Natural is
+      (if S.Slot = 0 then 0 else Slots (S.Slot).Drop_Count);
 
 end Beacon.Topic;

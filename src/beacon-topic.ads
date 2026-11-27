@@ -7,10 +7,14 @@
 --  Message_Type. There is no other path (design rule 1).
 --
 --  Static model (design rule 4): the instantiation owns a fixed table of
---  at most Max_Subscribers. Subscribers register at startup, before any
---  Publish. Registration is not task-safe by design; publishing is.
+--  at most Max_Subscribers.
 --
---  Single writer: one Publisher per instantiation. Create_Publisher
+--  Each Topic owns an array of queues. Slots will
+--  never disappear after creation even if the subscriber at that slot dies
+--  or is unresponsive. When a Subscriber registers, they get assigned an index
+--  or slot that contain a queue.
+
+--  With a Single writer: one Publisher per instantiation. Create_Publisher
 --  refuses a second one.
 --
 --  Runtime needs: protected types with entries, so light-tasking
@@ -26,6 +30,8 @@ package Beacon.Topic is
 
    type Publisher is limited private;
    type Subscriber (Mode : Delivery_Mode) is limited private;
+   subtype Slot_Index is Natural range 0 .. Max_Subscribers;
+   subtype Active_Slot_Index is Slot_Index range 1 .. Max_Subscribers;
 
    ---------------
    -- Publisher --
@@ -44,15 +50,30 @@ package Beacon.Topic is
    procedure Publish (P : Publisher; Msg : Message_Type)
      with Pre => Is_Created (P);
 
-   --  Never blocks. Delivered is False if at least one Reliable
-   --  subscriber was full; that subscriber did not get Msg, the others did.
-   --  (Week 4 decision: keep this partial semantics, or make it all-or-
-   --  nothing. Partial is simpler and matches DDS per-reader queues.)
+   --  Never waits for queue capacity.
+   --  Reliable subscriber with a full queue: rejects Msg.
+   --  Best_Effort subscriber: accepts Msg, dropping oldest if full.
+   --  Partial delivery is intentional: other subscribers still receive Msg.
+   --  Delivered is false if any Reliable subscriber rejected Msg, true otherwise.
    procedure Try_Publish
      (P         : Publisher;
       Msg       : Message_Type;
       Delivered : out Boolean)
      with Pre => Is_Created (P);
+
+   --  Failure flags indexed by subscriber registration order
+   --  The array size is fixed by Max_Subscribers at instantiation
+   --  True means that the subscriber rejected Msg because the queue was full
+   --  Unused registration slots remain false
+   type Delivery_Failures is array (Active_Slot_Index) of Boolean;
+
+   --  Same delivery behavior as Try_Publish, with per-subscrier results.
+   procedure Try_Publish
+       (P            : Publisher;
+         Msg         : Message_Type;
+         Delivered   : out Boolean;
+         Failures    : out Delivery_Failures)
+       with Pre => Is_Created (P);
 
    ----------------
    -- Subscriber --
@@ -63,9 +84,10 @@ package Beacon.Topic is
 
    function Is_Registered (S : Subscriber) return Boolean;
 
-   --  S must outlive every Publish: declare it at library level or in
-   --  the scope that owns the whole run. No heap, so no copy is taken.
-   procedure Create_Subscriber (S : aliased in out Subscriber)
+   --  Registers S with the topic. The topic owns the queue and S holds only
+   --  a slot number, so S may go out of scope. Slots are never released.
+   --  Registration must finish before publishing starts (README decision 2).
+   procedure Create_Subscriber (S : in out Subscriber)
      with Pre  => Subscriber_Count < Max_Subscribers
                   and then not Is_Registered (S),
           Post => Subscriber_Count = Subscriber_Count'Old + 1
@@ -81,6 +103,19 @@ package Beacon.Topic is
       Success : out Boolean)
      with Pre => Is_Registered (S);
 
+   --  Uses only Ada.Real_Time and delay until (Jorvik-compatible)
+   --  needs no tasking beyond protected types with entries (SNFR-26).
+   --  UC-18: Waits up to Timeout seconds for a message.
+   --  Success = True  : the oldest message was removed and returned in Msg.
+   --  Success = False : the timeout expired; the queue is unchanged and
+   --                    Msg is not meaningful.
+   procedure Receive
+     (S       : in out Subscriber;
+      Msg     : out Message_Type;
+      Timeout : Duration;
+      Success : out Boolean)
+     with Pre => Is_Registered (S) and then Timeout >= 0.0;
+
    --  Messages waiting in S's queue.
    function Pending (S : Subscriber) return Natural;
 
@@ -90,24 +125,36 @@ package Beacon.Topic is
 
 private
 
-   package Ring is new Beacon.Queue (Message_Type, Queue_Depth);
+   package Ring is new Beacon.Queue
+      (Element_Type => Message_Type,
+      Depth => Queue_Depth);
 
-   protected type Bounded_Queue (Mode : Delivery_Mode) is
-      --  Barrier: Best_Effort always open; Reliable open when not full.
+   protected type Bounded_Queue is
+      procedure Configure (Mode : Delivery_Mode);
+      --  Barrier: Reliable open when not full.
       entry Push (Msg : Message_Type);
-      procedure Try_Push (Msg : Message_Type; Accepted : out Boolean);
       entry Pop (Msg : out Message_Type);
+      procedure Try_Push (Msg : Message_Type; Accepted : out Boolean);
       procedure Try_Pop (Msg : out Message_Type; Success : out Boolean);
       function Count return Natural;
       function Drop_Count return Natural;
    private
+      Current_Mode : Delivery_Mode := Reliable;
       Q     : Ring.Queue_Type := Ring.Empty_Queue;
       Drops : Natural := 0;
+      Can_Push : Boolean := True;
+      Has_Data : Boolean := False;
    end Bounded_Queue;
 
+   type Topic_Array is array (Active_Slot_Index) of Bounded_Queue; --  array of queues
+
+   Slots : Topic_Array;
+   Registered : Slot_Index := 0;
+
+   --  Subscribers no longer has their own private queue. All queues are in Topic's
+   --  array. Subscribers are given an Slot_Index
    type Subscriber (Mode : Delivery_Mode) is limited record
-      Queue      : Bounded_Queue (Mode);
-      Registered : Boolean := False;
+      Slot : Slot_Index := 0;
    end record;
 
    type Publisher is limited record
